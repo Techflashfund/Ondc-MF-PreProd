@@ -112,7 +112,7 @@ class ONDCSearchView(APIView):
             "X-Gateway-Subscriber-Id": os.getenv("SUBSCRIBER_ID")
         }
 
-        response = requests.post("https://staging.gateway.proteantech.in/search", data=request_body_str, headers=headers)
+        response = requests.post("https://preprod.gateway.ondc.org/search", data=request_body_str, headers=headers)
 
         return Response({
             "status_code": response.status_code,
