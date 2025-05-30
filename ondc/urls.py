@@ -53,8 +53,7 @@ urlpatterns = [
     path('lumpretryconfirm',LumpRetryConfirm.as_view(),name='lumpretryconfirm'),
     path('lumpupdate',LumpRetryUpdate.as_view(),name='lumpupdate'),
 
-
-
+    path('completesip', CompleteSIPFlowView.as_view(), name='complete'),
 
 
 ]
