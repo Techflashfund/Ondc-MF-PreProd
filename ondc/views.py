@@ -14,6 +14,7 @@ from django.utils.decorators import method_decorator
 
 from .models import Transaction, Message, FullOnSearch,SelectSIP,SubmissionID,OnInitSIP,OnConfirm,OnStatus,OnUpdate,PaymentSubmisssion,OnCancel
 from .cryptic_utils import create_authorisation_header  
+from .utils import build_frequency, get_client_ip
 
 
 class ONDCSearchView(APIView):
@@ -57,7 +58,7 @@ class ONDCSearchView(APIView):
                         "agent": {
                             "organization": {
                                 "creds": [
-                                    {"id": "ARN-125784", "type": "ARN"}
+                                    {"id": os.getenv('ARN'), "type": "ARN"}
                                 ]
                             }
                         }
@@ -200,7 +201,11 @@ class SIPCreationView(APIView):
         transaction_id = request.data.get('transaction_id')
         bpp_id = request.data.get('bpp_id')
         bpp_uri = request.data.get('bpp_uri')
-        preferred_type=request.data.get('preferred_type')
+        preferred_type='SIP'
+        amount= request.data.get('amount', '3000')  
+        pan=request.data.get('pan', 'ABCDE1234F') 
+        frequency=request.data.get('frequency', 'monthly') 
+        repeat=request.data.get('repeat',6) 
 
         if not all([transaction_id, bpp_id, bpp_uri]):
             return Response({"error": "Missing transaction_id, bpp_id, or bpp_uri"}, 
@@ -262,7 +267,7 @@ class SIPCreationView(APIView):
           "quantity": {
             "selected": {
               "measure": {
-                "value": "3000",
+                "value": amount,
                 "unit": "INR"
               }
             }
@@ -275,21 +280,21 @@ class SIPCreationView(APIView):
           "type": matching_fulfillment['type'],
           "customer": {
             "person": {
-              "id": "pan:arrpp7771n"
+              "id": "pan:"+pan
             }
           },
           "agent": {
             "person": {
-              "id": "euin:E52432"
+              "id": os.getenv('EUIN')
             },
             "organization": {
               "creds": [
                 {
-                  "id": "ARN-124567",
+                  "id": os.getenv('ARN'),
                   "type": "ARN"
                 },
                 {
-                  "id": "ARN-123456",
+                  "id": os.getenv('ARN'),
                   "type": "SUB_BROKER_ARN"
                 }
               ]
@@ -299,7 +304,7 @@ class SIPCreationView(APIView):
             {
               "time": {
                 "schedule": {
-                  "frequency":matching_fulfillment["tags"][0]["list"][0]["value"]
+                  "frequency":build_frequency(frequency, repeat)
                 }
               }
             }
@@ -550,8 +555,8 @@ class FormSubmisssion(APIView):
                                     "quantity": {
                                         "selected": {
                                         "measure": {
-                                            "value": "3000",
-                                            "unit": "INR"
+                                            "value": item[0]['quantity']['selected']['measure']['value'],
+                                            "unit": item[0]['quantity']['selected']['measure']['unit']
                                         }
                                         }
                                     },
@@ -566,22 +571,22 @@ class FormSubmisssion(APIView):
                                     "type": fulfillments[0]['type'],
                                     "customer": {
                                         "person": {
-                                        "id": "pan:arrpp7771n"
+                                        "id": fulfillments[0]['customer']['person']['id']
                                         }
                                     },
                                     "agent": {
                                         "person": {
-                                        "id": "euin:E52432"
+                                        "id": fulfillments[0]['agent']['person']['id']
                                         },
                                         "organization": {
                                         "creds": [
                                             {
-                                            "id": "ARN-124567",
-                                            "type": "ARN"
+                                            "id":fulfillments[0]['agent']['organization']['creds'][0]['id'],
+                                            "type": fulfillments[0]['agent']['organization']['creds'][0]['type']
                                             },
                                             {
-                                            "id": "ARN-123456",
-                                            "type": "SUB_BROKER_ARN"
+                                            "id": fulfillments[0]['agent']['organization']['creds'][1]['id'],
+                                            "type": fulfillments[0]['agent']['organization']['creds'][1]['type']
                                             }
                                         ]
                                         }
@@ -590,7 +595,7 @@ class FormSubmisssion(APIView):
                                         {
                                         "time": {
                                             "schedule": {
-                                            "frequency": fulfillments[0]["tags"][0]["list"][0]["value"]
+                                            "frequency": fulfillments[0]['stops'][0]['time']['schedule']['frequency']
                                             }
                                         }
                                         }
@@ -609,23 +614,23 @@ class FormSubmisssion(APIView):
                                     {
                                     "display": False,
                                     "descriptor": {
-                                        "name": "BAP Terms of Engagement",
-                                        "code": "BAP_TERMS"
+                                        "name": obj.payload["message"]["order"]['tags'][0]['descriptor']['name'],
+                                        "code": obj.payload["message"]["order"]['tags'][0]['descriptor']['code']
                                     },
                                     "list": [
                                         {
                                         "descriptor": {
-                                            "name": "Static Terms (Transaction Level)",
-                                            "code": "STATIC_TERMS"
+                                            "name": obj.payload["message"]["order"]['tags'][0]['list'][0]['descriptor']['name'],
+                                            "code": obj.payload["message"]["order"]['tags'][0]['list'][0]['descriptor']['code']
                                         },
-                                        "value": "https://buyerapp.com/legal/ondc:fis14/static_terms?v=0.1"
+                                        "value": obj.payload["message"]["order"]['tags'][0]['list'][0]['value']
                                         },
                                         {
                                         "descriptor": {
-                                            "name": "Offline Contract",
-                                            "code": "OFFLINE_CONTRACT"
+                                            "name": obj.payload["message"]["order"]['tags'][0]['list'][1]['descriptor']['name'],
+                                            "code": obj.payload["message"]["order"]['tags'][0]['list'][1]['descriptor']['code']
                                         },
-                                        "value": "true"
+                                        "value":obj.payload["message"]["order"]['tags'][0]['list'][1]['value']
                                         }
                                     ]
                                     }
@@ -675,6 +680,7 @@ class INIT(APIView):
         bpp_id = request.data.get('bpp_id')
         bpp_uri = request.data.get('bpp_uri')
         message_id=request.data.get('message_id')
+        phone= request.data.get('phone', '123456789')
 
         if not all([transaction_id,bpp_id,bpp_uri,message_id]):
             return Response({"error":"Required all Fields"},status=status.HTTP_400_BAD_REQUEST)
@@ -728,7 +734,7 @@ class INIT(APIView):
                         "quantity": {
                             "selected": {
                             "measure": {
-                                "value": "3000",
+                                "value": item[0]['quantity']['selected']['measure']['value'],
                                 "unit": "INR"
                             }
                             }
@@ -744,33 +750,32 @@ class INIT(APIView):
                         "type": fulfillments[0]['type'],
                         "customer": {
                             "person": {
-                            "id": "pan:arrpp7771n",
+                            "id": fulfillments[0]['customer']['person']['id'],
                             "creds": [
-                                {
-                                "id": "115.245.207.90",
-                                "type": "IP_ADDRESS"
-                                },
-                                {
-                "id": "9916599123",
-                "type": "PHONE"
-            }
-                                    ]
-                            },
-                            
+                               {
+                                    "id": get_client_ip(request),
+                                    "type": "IP_ADDRESS"
+                                }
+                            ]
                         },
+                        "contact": {
+                            "phone": phone
+                        }
+                    },
+                            
                         "agent": {
                             "person": {
-                            "id": "euin:E52432"
+                            "id": fulfillments[0]['agent']['person']['id']
                             },
                             "organization": {
                             "creds": [
                                 {
-                                "id": "ARN-124567",
-                                "type": "ARN"
+                                "id": fulfillments[0]['agent']['organization']['creds'][0]['id'],
+                                "type": fulfillments[0]['agent']['organization']['creds'][0]['type']
                                 },
                                 {
-                                "id": "ARN-123456",
-                                "type": "SUB_BROKER_ARN"
+                                "id": fulfillments[0]['agent']['organization']['creds'][1]['id'],
+                                "type": fulfillments[0]['agent']['organization']['creds'][1]['type']
                                 }
                             ]
                             }
