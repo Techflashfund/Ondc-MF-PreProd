@@ -681,6 +681,11 @@ class INIT(APIView):
         bpp_uri = request.data.get('bpp_uri')
         message_id=request.data.get('message_id')
         phone= request.data.get('phone', '123456789')
+        ifsc=request.data.get('ifsc', 'HDFC0000089')
+        account_number=request.data.get('account_number', '004701563111')
+        name=request.data.get('name', 'Harish Gupta')
+        acs_type=request.data.get('acs_type', 'SAVINGS')
+        payment_mode=request.data.get('payment_mode', 'UPI')
 
         if not all([transaction_id,bpp_id,bpp_uri,message_id]):
             return Response({"error":"Required all Fields"},status=status.HTTP_400_BAD_REQUEST)
@@ -795,11 +800,11 @@ class INIT(APIView):
                         {
                         "collected_by": payments[0]['collected_by'],
                         "params": {
-                            "amount": "3000",
+                            "amount": item[0]['quantity']['selected']['measure']['value'],
                             "currency": "INR",
-                            "source_bank_code": "icic0000047",
-                            "source_bank_account_number": "004701563111",
-                            "source_bank_account_name": "harish gupta"
+                            "source_bank_code": ifsc,
+                            "source_bank_account_number": account_number,
+                            "source_bank_account_name": payments[1]['tags'][0]['list'][4]['value']
                         },
                         "type": payments[0]['type'],
                         "tags": [
@@ -814,7 +819,7 @@ class INIT(APIView):
                                     "name": "Account Type",
                                     "code": "ACCOUNT_TYPE"
                                 },
-                                "value": "SAVINGS"
+                                "value": acs_type
                                 }
                             ]
                             },
@@ -828,7 +833,7 @@ class INIT(APIView):
                                 "descriptor": {
                                     "code": "MODE"
                                 },
-                                "value": "NACH"
+                                "value": payments[0]['tags'][0]['list'][0]['value']
                                 },
                                 {
                                 "descriptor": {
@@ -840,7 +845,7 @@ class INIT(APIView):
                                 "descriptor": {
                                     "code": "MANDATE_LIMIT"
                                 },
-                                "value": "50000"
+                                "value": fulfillments[0]['tags'][0]['list'][3]['value']
                                 }
                             ]
                             }
@@ -860,14 +865,14 @@ class INIT(APIView):
                                 "name": "Static Terms (Transaction Level)",
                                 "code": "STATIC_TERMS"
                             },
-                            "value": "https://buyerapp.com/legal/ondc:fis14/static_terms?v=0.1"
+                            "value": obj.payload['message']['order']['tags'][0]['list'][0]['value']
                             },
                             {
                             "descriptor": {
                                 "name": "Offline Contract",
                                 "code": "OFFLINE_CONTRACT"
                             },
-                            "value": "true"
+                            "value": obj.payload['message']['order']['tags'][0]['list'][1]['value']
                             }
                         ]
                         }
@@ -1007,7 +1012,8 @@ class ConfirmSIP(APIView):
     "domain": "ONDC:FIS14",
     "timestamp": timestamp,
 "bap_id": "investment.preprod.vyable.in",
-"bap_uri": "https://investment.preprod.vyable.in/ondc",    "transaction_id": transaction_id,
+"bap_uri": "https://investment.preprod.vyable.in/ondc",    
+"transaction_id": transaction_id,
     "message_id": message_id_conform,
     "version": "2.0.0",
     "ttl": "PT10M",
@@ -1027,7 +1033,7 @@ class ConfirmSIP(APIView):
           "quantity": {
             "selected": {
               "measure": {
-                "value": "3000",
+                "value": item[0]['quantity']['selected']['measure']['value'],
                 "unit": "INR"
               }
             }
@@ -1046,30 +1052,30 @@ class ConfirmSIP(APIView):
           "type": fulfillments[0]['type'],
           "customer": {
             "person": {
-              "id": "pan:arrpp7771n",
+              "id": fulfillments[0]['customer']['person']['id'],
               "creds": [
                 {
-                  "id": "115.245.207.90",
+                  "id": fulfillments[0]['customer']['person']['creds'][0]['id'],
                   "type": "IP_ADDRESS"
                 }
               ]
             },
             "contact": {
-              "phone": "9916599123"
+              "phone": fulfillments[0]['customer']['person']['creds'][1]['id']
             }
           },
           "agent": {
             "person": {
-              "id": "euin:E52432"
+              "id": fulfillments[0]['agent']['person']['id']
             },
             "organization": {
               "creds": [
                 {
-                  "id": "ARN-124567",
+                  "id": fulfillments[0]['agent']['organization']['creds'][0]['id'],
                   "type": "ARN"
                 },
                 {
-                  "id": "ARN-123456",
+                  "id": fulfillments[0]['agent']['organization']['creds'][1]['id'],
                   "type": "SUB_BROKER_ARN"
                 }
               ]
@@ -1092,12 +1098,12 @@ class ConfirmSIP(APIView):
           "collected_by": payments[0]['collected_by'],
           "status": payments[0]['status'],
           "params": {
-            "amount": "3000",
+            "amount": payments[0]['params']['amount'],
             "currency": "INR",
-            "source_bank_code": "icic0000047",
-            "source_bank_account_number": "004701563111",
-            "source_bank_account_name": "harish gupta",
-            "transaction_id": "243423324"
+            "source_bank_code": payments[0]['params']['source_bank_code'],
+            "source_bank_account_number": payments[0]['params']['source_bank_account_number'],
+            "source_bank_account_name": payments[0]['params']['source_bank_account_name'],
+            "transaction_id": payments[0]['id']
           },
           "type": payment_type,
           "tags": [
@@ -1131,14 +1137,14 @@ class ConfirmSIP(APIView):
                 "name": "Static Terms (Transaction Level)",
                 "code": "STATIC_TERMS"
               },
-              "value": "https://buyerapp.com/legal/ondc:fis14/static_terms?v=0.1"
+              "value": obj.payload["message"]["order"]['tags'][0]['list'][0]['value']
             },
             {
               "descriptor": {
                 "name": "Offline Contract",
                 "code": "OFFLINE_CONTRACT"
               },
-              "value": "true"
+              "value": obj.payload["message"]["order"]['tags'][0]['list'][1]['value']
             }
           ]
         },
@@ -1154,7 +1160,7 @@ class ConfirmSIP(APIView):
                 "name": "Static Terms (Transaction Level)",
                 "code": "STATIC_TERMS"
               },
-              "value": "https://sellerapp.com/legal/ondc:fis14/static_terms?v=0.1"
+              "value": obj.payload["message"]["order"]['tags'][1]['list'][0]['value']
             },
             {
               "descriptor": {
