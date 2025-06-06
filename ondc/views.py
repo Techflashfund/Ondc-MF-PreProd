@@ -138,18 +138,45 @@ class OnSearchView(APIView):
 
             # Validate required fields
             if not all([message_id, transaction_id, timestamp_str]):
-                return Response({"error": "Missing required fields in context"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {"status": "NACK"},
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Parse timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response({"error": "Invalid timestamp format"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {"status": "NACK"},
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Get related transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
-                return Response({"error": "Transaction not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {"status": "NACK"},
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
 
             # Save to database
             FullOnSearch.objects.create(
@@ -160,10 +187,26 @@ class OnSearchView(APIView):
             )
 
         except Exception as e:
-            logger.error("Failed to process on_search data: %s", str(e))
-            return Response({"error": "Server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error("Failed to process on_search data: %s", str(e), exc_info=True)
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {"status": "NACK"},
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
+                    }
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"message": "on_search received"}, status=status.HTTP_200_OK)
+        # Success response
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {"status": "ACK"}
+            }
+        }, status=status.HTTP_200_OK)
+
 
 
 class OnSearchDataView(APIView):
@@ -368,19 +411,10 @@ class SIPCreationView(APIView):
             "response": response.json() if response.content else {}
         }, status=status.HTTP_200_OK)                
 
-             
-             
-
-
-
-
-
-
 logger = logging.getLogger(__name__)
 
 class OnSelectSIPView(APIView):
     def post(self, request, *args, **kwargs):
-
         try:
             data = request.data
             logger.info("Received on_select payload: %s", data)
@@ -392,73 +426,101 @@ class OnSelectSIPView(APIView):
             timestamp_str = context.get("timestamp")
             action = context.get("action")
 
-             # Validate context fields
+            # Validate context fields
             if not all([message_id, transaction_id, timestamp_str, action]):
-                return Response(
-                    {"error": "Missing required fields in context"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if action != "on_select":
-                return Response(
-                    {"error": "Invalid action. Expected 'on_select'"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "ACTION-MISMATCH",
+                            "message": "Invalid action. Expected 'on_select'"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response(
-                    {"error": "Invalid timestamp format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
                 logger.warning("Transaction not found: %s", transaction_id)
-                return Response(
-                    {"error": "Transaction not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
 
-
+            # Save data
             SelectSIP.objects.create(
                 transaction=transaction,
                 message_id=message_id,
                 payload=data,
                 timestamp=timestamp
             )
-        
-            # If all validations pass
-            logger.info("on_select validation passed, sending ACK")
-            return Response(
-                {
-                    "message": {
-                        "ack": {
-                            "status": "ACK"
-                        }
-                    }
-                },
-                status=status.HTTP_200_OK
-            )
-           
-                
 
         except Exception as e:
             logger.error("Failed to process on_select: %s", str(e), exc_info=True)
-            return Response(
-                {
-                    "message": {
-                        "ack": {
-                            "status": "NACK",
-                            "description": "Internal server error"
-                        }
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {
+                        "status": "NACK"
+                    },
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
                     }
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Success response
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {
+                    "status": "ACK"
+                }
+            }
+        }, status=status.HTTP_200_OK)
 
 
 
@@ -899,11 +961,11 @@ class INIT(APIView):
 
 
 class ONINIT(APIView):
-    def post(self,request,*args,**kwargs):
+    def post(self, request, *args, **kwargs):
         try:
             data = request.data
-            logger.info("Received on_select payload: %s", data)
-            print("Received on_select payload:", json.dumps(data, indent=2))
+            logger.info("Received on_init payload: %s", data)
+            print("Received on_init payload:", json.dumps(data, indent=2))
 
             context = data.get("context", {})
             message_id = context.get("message_id")
@@ -911,38 +973,70 @@ class ONINIT(APIView):
             timestamp_str = context.get("timestamp")
             action = context.get("action")
 
-             # Validate context fields
+            # Validate context fields
             if not all([message_id, transaction_id, timestamp_str, action]):
-                return Response(
-                    {"error": "Missing required fields in context"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if action != "on_init":
-                return Response(
-                    {"error": "Invalid action. Expected 'on_init'"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "ACTION-MISMATCH",
+                            "message": "Invalid action. Expected 'on_init'"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response(
-                    {"error": "Invalid timestamp format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
                 logger.warning("Transaction not found: %s", transaction_id)
-                return Response(
-                    {"error": "Transaction not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-             # Save to database
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Save to database
             OnInitSIP.objects.create(
                 transaction=transaction,
                 message_id=message_id,
@@ -951,10 +1045,29 @@ class ONINIT(APIView):
             )
 
         except Exception as e:
-            logger.error("Failed to process on_search data: %s", str(e))
-            return Response({"error": "Server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error("Failed to process on_init data: %s", str(e))
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {
+                        "status": "NACK"
+                    },
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
+                    }
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"message": "on_search received"}, status=status.HTTP_200_OK)
+        # Success response
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {
+                    "status": "ACK"
+                }
+            }
+        }, status=status.HTTP_200_OK)
     
 
 
@@ -1209,35 +1322,66 @@ class OnConfirmSIP(APIView):
 
              # Validate context fields
             if not all([message_id, transaction_id, timestamp_str, action]):
-                return Response(
-                    {"error": "Missing required fields in context"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if action != "on_confirm":
-                return Response(
-                    {"error": "Invalid action. Expected 'on_confirm'"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "ACTION-MISMATCH",
+                            "message": "Invalid action. Expected 'on_confirm'"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response(
-                    {"error": "Invalid timestamp format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
                 logger.warning("Transaction not found: %s", transaction_id)
-                return Response(
-                    {"error": "Transaction not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
              # Save to database
             OnConfirm.objects.create(
                 transaction=transaction,
@@ -1248,17 +1392,33 @@ class OnConfirmSIP(APIView):
 
         except Exception as e:
             logger.error("Failed to process on_search data: %s", str(e))
-            return Response({"error": "Server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        return Response({"message": "on_search received"}, status=status.HTTP_200_OK)
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {
+                        "status": "NACK"
+                    },
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
+                    }
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {
+                    "status": "ACK"
+                }
+            }
+        }, status=status.HTTP_200_OK)
     
 class OnStatusView(APIView):
-    def post(self,request,*args,**kwargs):
-
+    def post(self, request, *args, **kwargs):
         try:
             data = request.data
             logger.info("Received on_status payload: %s", data)
-            print("Received  on_status  payload:", json.dumps(data, indent=2))
+            print("Received on_status payload:", json.dumps(data, indent=2))
 
             context = data.get("context", {})
             message_id = context.get("message_id")
@@ -1266,35 +1426,69 @@ class OnStatusView(APIView):
             timestamp_str = context.get("timestamp")
             action = context.get("action")
 
+            # Validate context fields
             if not all([message_id, transaction_id, timestamp_str, action]):
-                return Response(
-                    {"error": "Missing required fields in context"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if action != "on_status":
-                return Response(
-                    {"error": "Invalid action. Expected 'on_confirm'"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "ACTION-MISMATCH",
+                            "message": "Invalid action. Expected 'on_status'"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-             # Validate timestamp
+            # Validate timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response(
-                    {"error": "Invalid timestamp format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
                 logger.warning("Transaction not found: %s", transaction_id)
-                return Response(
-                    {"error": "Transaction not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
+
             # Save to database
             OnStatus.objects.create(
                 transaction=transaction,
@@ -1302,21 +1496,41 @@ class OnStatusView(APIView):
                 payload=data,
                 timestamp=timestamp
             )
+
         except Exception as e:
             logger.error("Failed to process on_status data: %s", str(e))
-            return Response({"error": "Server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {
+                        "status": "NACK"
+                    },
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
+                    }
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"message": "on_status received"}, status=status.HTTP_200_OK)    
+        # Return success ACK
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {
+                    "status": "ACK"
+                }
+            }
+        }, status=status.HTTP_200_OK)
+   
 
 
 class OnUpdateView(APIView):
 
-    def post(self,request,*args,**kwargs):
-
+    def post(self, request, *args, **kwargs):
         try:
             data = request.data
             logger.info("Received on_update payload: %s", data)
-            print("Received  on_update  payload:", json.dumps(data, indent=2))
+            print("Received on_update payload:", json.dumps(data, indent=2))
 
             context = data.get("context", {})
             message_id = context.get("message_id")
@@ -1324,49 +1538,101 @@ class OnUpdateView(APIView):
             timestamp_str = context.get("timestamp")
             action = context.get("action")
 
+            # Validate context fields
             if not all([message_id, transaction_id, timestamp_str, action]):
-                return Response(
-                    {"error": "Missing required fields in context"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "CONTEXT-ERROR",
+                            "message": "Missing required fields in context"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if action != "on_update":
-                return Response(
-                    {"error": "Invalid action. Expected 'on_update'"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "ACTION-MISMATCH",
+                            "message": "Invalid action. Expected 'on_update'"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-             # Validate timestamp
+            # Validate timestamp
             timestamp = parse_datetime(timestamp_str)
             if not timestamp:
-                return Response(
-                    {"error": "Invalid timestamp format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TIMESTAMP-ERROR",
+                            "message": "Invalid timestamp format"
+                        }
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate transaction
             try:
                 transaction = Transaction.objects.get(transaction_id=transaction_id)
             except Transaction.DoesNotExist:
                 logger.warning("Transaction not found: %s", transaction_id)
-                return Response(
-                    {"error": "Transaction not found"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-             # Save to database
+                return Response({
+                    "context": context,
+                    "message": {
+                        "ack": {
+                            "status": "NACK"
+                        },
+                        "error": {
+                            "type": "TRANSACTION-NOT-FOUND",
+                            "message": "Transaction not found"
+                        }
+                    }
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Save to database
             OnUpdate.objects.create(
                 transaction=transaction,
                 message_id=message_id,
                 payload=data,
                 timestamp=timestamp
             )
+
         except Exception as e:
-            logger.error("Failed to process on_updatedata: %s", str(e))
-            return Response({"error": "Server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error("Failed to process on_update data: %s", str(e))
+            return Response({
+                "context": context if 'context' in locals() else {},
+                "message": {
+                    "ack": {
+                        "status": "NACK"
+                    },
+                    "error": {
+                        "type": "SERVER-ERROR",
+                        "message": str(e)
+                    }
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"message": "on_update received"}, status=status.HTTP_200_OK)    
-
-
+        # Success response
+        return Response({
+            "context": context,
+            "message": {
+                "ack": {
+                    "status": "ACK"
+                }
+            }
+        }, status=status.HTTP_200_OK)
 
 
                 
