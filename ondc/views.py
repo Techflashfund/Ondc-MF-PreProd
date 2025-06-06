@@ -1061,7 +1061,7 @@ class ConfirmSIP(APIView):
               ]
             },
             "contact": {
-              "phone": fulfillments[0]['customer']['person']['creds'][1]['id']
+              "phone": fulfillments[0]['customer']['contact']['phone']
             }
           },
           "agent": {
