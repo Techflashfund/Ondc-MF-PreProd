@@ -1144,7 +1144,7 @@ class ConfirmSIP(APIView):
                 "name": "Offline Contract",
                 "code": "OFFLINE_CONTRACT"
               },
-              "value": obj.payload["message"]["order"]['tags'][0]['list'][0]['value']
+              "value": obj.payload["message"]["order"]['tags'][0]['list'][1]['value']
             }
           ]
         },
@@ -1160,7 +1160,7 @@ class ConfirmSIP(APIView):
                 "name": "Static Terms (Transaction Level)",
                 "code": "STATIC_TERMS"
               },
-              "value": obj.payload["message"]["order"]['tags'][1]['list'][0]['value']
+              "value": obj.payload["message"]["order"]['tags'][0]['list'][0]['value']
             },
             {
               "descriptor": {
